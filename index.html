@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>AI Chat</title>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>AI Chat</h2>
+            <button id="newChatBtn" class="btn-new-chat">+ New Chat</button>
+        </div>
+        <div class="chat-list" id="chatList"></div>
+        <div class="sidebar-footer">
+            <div class="settings">
+                <select id="modelSelect">
+                    <option value="">Select Model</option>
+                </select>
+                <button id="themeToggle" class="btn-theme">🌙</button>
+            </div>
+
+        </div>
+    </aside>
+
+    <main class="main">
+        <header class="chat-header">
+            <span id="chatTitle">New Chat</span>
+            <span id="modelBadge" class="model-badge"></span>
+            <button id="clearChatBtn" class="btn-clear">Clear</button>
+            <button id="deleteChatBtn" class="btn-delete">Delete</button>
+        </header>
+
+        <div class="messages" id="messages"></div>
+
+        <div class="input-area">
+            <textarea id="userInput" placeholder="Type a message..." rows="1"></textarea>
+            <button id="sendBtn" class="btn-send">➤</button>
+        </div>
+        <div id="errorToast" class="error-toast"></div>
+    </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
