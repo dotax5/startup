@@ -169,16 +169,6 @@ body {
     color: var(--text-secondary);
 }
 
-.btn-clear {
-    padding: 8px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-    font-size: 14px;
-}
-
 .btn-delete {
     padding: 8px 12px;
     border: 1px solid #dc2626;
@@ -449,4 +439,12 @@ body {
 
 .error-toast.show {
     display: block;
+}
+
+.sidebar-logo {
+    width: 32px;
+    height: 32px;
+    margin-right: 2px;
+    vertical-align: middle;
+    border-radius: 50%;
 }

@@ -1,15 +1,16 @@
-const API_KEY = "openrouterApi";
+const API_KEY = "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";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const MODELS = [
     { id: "openai/gpt-oss-120b:free", name: "gpt-oss-120b" },
     { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super" },
-    { id: "z-ai/glm-4.5-air:free", name: "GLM 4.5 (Air)" }
+    { id: "z-ai/glm-4.5-air:free", name: "GLM 4.5 (Air)" },
+    { id: "poolside/laguna-m.1:free", name: "Laguna M.1 (долгая)"}
 ];
 
 let state = {
     chats: [],
-    currentChatId: null,
+    currentChat: null,
     settings: {
         theme: localStorage.getItem("theme") || "dark",
         model: localStorage.getItem("model") || "openai/gpt-oss-120b:free"
@@ -22,38 +23,117 @@ let thinkingTimer = null;
 let thinkingStartTime = null;
 
 function init() {
-    loadState();
     applyTheme();
     renderModelSelect();
     setupEventListeners();
     loadChats();
-
-    if (state.chats.length === 0) {
-        createNewChat();
-    } else {
-        switchToChat(state.chats[0].id);
-    }
 }
 
-function loadState() {
-    const saved = localStorage.getItem("aiChatState");
-    if (saved) {
-        const parsed = JSON.parse(saved);
-        state.chats = parsed.chats || [];
-        state.currentChatId = parsed.currentChatId;
-        if (parsed.settings) {
-            state.settings = { ...state.settings, ...parsed.settings };
+// --- SERVER API HELPERS ---
+
+async function api(path, options = {}) {
+    const res = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    if (res.status === 204) return null;
+    return res.json();
+}
+
+// --- CHAT CRUD ---
+
+async function loadChats() {
+    try {
+        state.chats = await api('/api/chats');
+        renderChatList();
+        if (state.chats.length === 0) {
+            await createNewChat();
+        } else {
+            await switchToChat(state.chats[0]._id);
         }
+    } catch (err) {
+        showError('Failed to load chats: ' + err.message);
     }
 }
 
-function saveState() {
-    localStorage.setItem("aiChatState", JSON.stringify({
-        chats: state.chats,
-        currentChatId: state.currentChatId,
-        settings: state.settings
-    }));
+async function switchToChat(chatId) {
+    if (isLoading) return;
+    try {
+        state.currentChat = await api(`/api/chats/${chatId}`);
+        renderChatList();
+        renderMessages();
+        updateChatTitle();
+        document.getElementById("sidebar").classList.remove("open");
+    } catch (err) {
+        showError('Failed to load chat: ' + err.message);
+    }
 }
+
+async function createNewChat() {
+    if (isLoading) return;
+    try {
+        const chat = await api('/api/chats', { method: 'POST' });
+        state.chats.unshift(chat);
+        state.currentChat = chat;
+        renderChatList();
+        renderMessages();
+        updateChatTitle();
+    } catch (err) {
+        showError('Failed to create chat: ' + err.message);
+    }
+}
+
+async function deleteCurrentChat() {
+    if (!state.currentChat) return;
+    if (isLoading) return;
+    if (!confirm("Delete this chat?")) return;
+    try {
+        await api(`/api/chats/${state.currentChat._id}`, { method: 'DELETE' });
+        state.chats = state.chats.filter(c => c._id !== state.currentChat._id);
+        state.currentChat = null;
+        if (state.chats.length === 0) {
+            await createNewChat();
+        } else {
+            await switchToChat(state.chats[0]._id);
+        }
+    } catch (err) {
+        showError('Failed to delete chat: ' + err.message);
+    }
+}
+
+async function updateChatTitleOnServer(title) {
+    if (!state.currentChat) return;
+    const updated = await api(`/api/chats/${state.currentChat._id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title })
+    });
+    state.currentChat.title = title;
+    const meta = state.chats.find(c => c._id === state.currentChat._id);
+    if (meta) meta.title = title;
+    updateChatTitle();
+    renderChatList();
+}
+
+async function addMessage(role, content, extra = {}) {
+    if (!state.currentChat) return;
+    state.currentChat = await api(`/api/chats/${state.currentChat._id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ role, content, timestamp: Date.now(), ...extra })
+    });
+}
+
+async function deleteMessagesFrom(idx) {
+    if (!state.currentChat) return;
+    state.currentChat = await api(`/api/chats/${state.currentChat._id}/messages/${idx}`, {
+        method: 'DELETE'
+    });
+}
+
+// --- UI ---
 
 function applyTheme() {
     document.documentElement.setAttribute("data-theme", state.settings.theme);
@@ -76,7 +156,6 @@ function setupEventListeners() {
     document.getElementById("sendBtn").addEventListener("click", sendMessage);
     document.getElementById("deleteChatBtn").addEventListener("click", deleteCurrentChat);
     document.getElementById("themeToggle").addEventListener("click", toggleTheme);
-
 
     document.getElementById("modelSelect").addEventListener("change", (e) => {
         state.settings.model = e.target.value;
@@ -107,69 +186,16 @@ function toggleTheme() {
     document.getElementById("themeToggle").textContent = state.settings.theme === "light" ? "🌙" : "☀️";
 }
 
-function createNewChat() {
-    const chat = {
-        id: Date.now().toString(),
-        title: "New Chat",
-        messages: [],
-        createdAt: Date.now()
-    };
-    state.chats.unshift(chat);
-    state.currentChatId = chat.id;
-    saveState();
-    renderChatList();
-    renderMessages();
-    updateChatTitle();
+function updateChatTitle() {
+    document.getElementById("chatTitle").textContent = state.currentChat ? state.currentChat.title : "New Chat";
 }
 
-function loadChats() {
-    renderChatList();
-    renderMessages();
-    updateModelBadge();
+function updateModelBadge() {
+    const model = MODELS.find(m => m.id === state.settings.model);
+    document.getElementById("modelBadge").textContent = model ? model.name : "";
 }
 
-function renderChatList() {
-    const list = document.getElementById("chatList");
-    list.innerHTML = "";
-    state.chats.forEach(chat => {
-        const item = document.createElement("div");
-        item.className = `chat-item ${chat.id === state.currentChatId ? "active" : ""}`;
-        item.textContent = chat.title;
-        item.addEventListener("click", () => switchToChat(chat.id));
-        list.appendChild(item);
-    });
-}
-
-function switchToChat(chatId) {
-    state.currentChatId = chatId;
-    saveState();
-    renderChatList();
-    renderMessages();
-    updateChatTitle();
-    document.getElementById("sidebar").classList.remove("open");
-}
-
-function deleteCurrentChat() {
-    const chat = getCurrentChat();
-    if (!chat) return;
-
-    if (confirm("Delete this chat?")) {
-        state.chats = state.chats.filter(c => c.id !== chat.id);
-
-        if (state.chats.length === 0) {
-            createNewChat();
-        } else {
-            switchToChat(state.chats[0].id);
-        }
-
-        saveState();
-        renderChatList();
-    }
-}
-
-function getCurrentChat() {
-    return state.chats.find(c => c.id === state.currentChatId);
-}
+// --- MESSAGES ---
 
 async function sendMessage() {
     const input = document.getElementById("userInput");
@@ -178,30 +204,35 @@ async function sendMessage() {
 
     if (isLoading) return;
     if (!message) return;
-    if (!state.settings.model) {
-        alert("Please select a model");
-        return;
-    }
-
-    const chat = getCurrentChat();
-    if (!chat) return;
+    if (!state.settings.model) { alert("Please select a model"); return; }
+    if (!state.currentChat) return;
 
     isLoading = true;
     sendBtn.disabled = true;
     input.disabled = true;
 
-    if (chat.messages.length === 0) {
-        chat.title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
-        updateChatTitle();
+    const chatId = state.currentChat._id;
+    const isFirst = state.currentChat.messages.length === 0;
+
+    if (isFirst) {
+        const title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
+        try { await updateChatTitleOnServer(title); } catch (e) { showError('Title update failed: ' + e.message); }
     }
 
-    chat.messages.push({ role: "user", content: message.trim(), timestamp: Date.now() });
+    try {
+        await addMessage('user', message);
+    } catch (err) {
+        showError('Failed to save message: ' + err.message);
+        isLoading = false; input.disabled = false; sendBtn.disabled = false;
+        return;
+    }
+
     input.value = "";
     autoResize();
     renderMessages();
 
     const loadingMsg = { role: "ai", content: "", loading: true };
-    chat.messages.push(loadingMsg);
+    state.currentChat.messages.push(loadingMsg);
     renderMessages();
 
     thinkingStartTime = Date.now();
@@ -212,42 +243,33 @@ async function sendMessage() {
     }, 1000);
 
     try {
-        const history = chat.messages.filter(m => !m.loading && (m.role === "user" || m.role === "ai"));
+        const history = state.currentChat.messages.filter(
+            m => !m.loading && (m.role === "user" || m.role === "ai")
+        );
         currentAbortController = new AbortController();
         const response = await callAPI(message, history.slice(0, -1), currentAbortController.signal);
         currentAbortController = null;
-        if (thinkingTimer) {
-            clearInterval(thinkingTimer);
-            thinkingTimer = null;
-        }
-        loadingMsg.content = response;
-        loadingMsg.loading = false;
-        loadingMsg.responseTime = Date.now() - thinkingStartTime;
-        loadingMsg.responseTimestamp = Date.now();
+
+        if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
+
+        await addMessage('ai', response, {
+            responseTime: Date.now() - thinkingStartTime,
+            responseTimestamp: Date.now()
+        });
     } catch (error) {
         if (error.name === "AbortError") {
-            if (thinkingTimer) {
-                clearInterval(thinkingTimer);
-                thinkingTimer = null;
-            }
-            chat.messages = chat.messages.filter(m => !m.loading);
-            saveState();
+            if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
+            try { await deleteMessagesFrom(state.currentChat.messages.length - 2); } catch { }
+            isLoading = false; input.disabled = false; sendBtn.disabled = false;
             renderMessages();
-            isLoading = false;
-            input.disabled = false;
-            sendBtn.disabled = false;
             return;
         }
         showError(error.message);
     }
 
-    if (thinkingTimer) {
-        clearInterval(thinkingTimer);
-        thinkingTimer = null;
-    }
+    if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
 
-    chat.messages = chat.messages.filter(m => !m.loading);
-    saveState();
+    state.currentChat.messages = state.currentChat.messages.filter(m => !m.loading);
     renderMessages();
 
     isLoading = false;
@@ -255,11 +277,92 @@ async function sendMessage() {
     sendBtn.disabled = false;
 }
 
-function showError(message) {
-    const toast = document.getElementById("errorToast");
-    toast.textContent = message;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), 5000);
+async function deleteMessage(index) {
+    if (!state.currentChat) return;
+    if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; }
+    if (isLoading) {
+        isLoading = false;
+        document.getElementById("userInput").disabled = false;
+        document.getElementById("sendBtn").disabled = false;
+    }
+    try {
+        await deleteMessagesFrom(index);
+        renderMessages();
+    } catch (err) {
+        showError('Failed to delete message: ' + err.message);
+    }
+}
+
+async function regenerateResponse(index) {
+    const chat = state.currentChat;
+    if (!chat || index === 0) return;
+
+    const userMsgIndex = index - 1;
+    if (userMsgIndex < 0 || chat.messages[userMsgIndex].role !== "user") return;
+
+    if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; }
+    if (isLoading) {
+        isLoading = false;
+        document.getElementById("userInput").disabled = false;
+        document.getElementById("sendBtn").disabled = false;
+    }
+
+    const userMessage = chat.messages[userMsgIndex].content;
+
+    try {
+        await deleteMessagesFrom(userMsgIndex + 1);
+    } catch (err) {
+        showError('Failed to prepare for regeneration: ' + err.message);
+        return;
+    }
+
+    const loadingMsg = { role: "ai", content: "", loading: true };
+    state.currentChat.messages.push(loadingMsg);
+    renderMessages();
+
+    const input = document.getElementById("userInput");
+    const sendBtn = document.getElementById("sendBtn");
+    input.disabled = true;
+    sendBtn.disabled = true;
+    isLoading = true;
+
+    currentAbortController = new AbortController();
+    const regenThinkingStart = Date.now();
+    const regenTimer = setInterval(() => {
+        const seconds = Math.floor((Date.now() - regenThinkingStart) / 1000);
+        const timerEl = document.getElementById("thinkingTimer");
+        if (timerEl) timerEl.textContent = `Думаю: ${seconds}с`;
+    }, 1000);
+
+    const history = (chat.messages || []).filter(
+        m => !m.loading && (m.role === "user" || m.role === "ai")
+    );
+
+    try {
+        const response = await callAPI(userMessage, history, currentAbortController.signal);
+        clearInterval(regenTimer);
+        currentAbortController = null;
+
+        await addMessage('ai', response, {
+            responseTime: Date.now() - regenThinkingStart,
+            responseTimestamp: Date.now()
+        });
+
+        isLoading = false;
+        input.disabled = false;
+        sendBtn.disabled = false;
+        renderMessages();
+    } catch (error) {
+        if (error.name === "AbortError") return;
+        clearInterval(regenTimer);
+        showError(error.message);
+        state.currentChat.messages = state.currentChat.messages.filter(m => !m.loading);
+        currentAbortController = null;
+        isLoading = false;
+        input.disabled = false;
+        sendBtn.disabled = false;
+        renderMessages();
+    }
 }
 
 async function callAPI(userMessage, history, signal = null) {
@@ -304,11 +407,25 @@ async function callAPI(userMessage, history, signal = null) {
     return data.choices[0].message.content;
 }
 
+// --- RENDER ---
+
+function renderChatList() {
+    const list = document.getElementById("chatList");
+    list.innerHTML = "";
+    state.chats.forEach(chat => {
+        const item = document.createElement("div");
+        item.className = `chat-item ${chat._id === state.currentChat?._id ? "active" : ""}`;
+        item.textContent = chat.title;
+        item.addEventListener("click", () => switchToChat(chat._id));
+        list.appendChild(item);
+    });
+}
+
 function renderMessages() {
     const container = document.getElementById("messages");
     container.innerHTML = "";
 
-    const chat = getCurrentChat();
+    const chat = state.currentChat;
     if (!chat) return;
 
     chat.messages.forEach((msg, index) => {
@@ -328,22 +445,16 @@ function renderMessages() {
             if (msg.timestamp) {
                 const timeDiv = document.createElement("div");
                 timeDiv.className = "message-time";
-                timeDiv.textContent = formatTime(msg.timestamp);
+                const ts = (msg.role === "ai" && msg.responseTimestamp) ? msg.responseTimestamp : msg.timestamp;
+                timeDiv.textContent = formatTime(ts);
                 div.appendChild(timeDiv);
             }
 
             if (msg.role === "ai" && msg.responseTime) {
-                const timeDiv = document.createElement("div");
-                timeDiv.className = "message-time";
-                timeDiv.textContent = formatTime(msg.responseTimestamp);
-                div.appendChild(timeDiv);
-            }
-
-            if (msg.role === "ai" && msg.responseTime) {
-                const timeDiv = document.createElement("div");
-                timeDiv.className = "response-time";
-                timeDiv.textContent = `Сгенерировано за ${Math.round(msg.responseTime / 1000)} сек`;
-                div.appendChild(timeDiv);
+                const rtDiv = document.createElement("div");
+                rtDiv.className = "response-time";
+                rtDiv.textContent = `Сгенерировано за ${Math.round(msg.responseTime / 1000)} сек`;
+                div.appendChild(rtDiv);
             }
 
             const btns = document.createElement("div");
@@ -401,107 +512,11 @@ function formatMessage(content) {
     return marked.parse(content);
 }
 
-function deleteMessage(index) {
-    const chat = getCurrentChat();
-    if (!chat) return;
-
-    if (currentAbortController) {
-        currentAbortController.abort();
-        currentAbortController = null;
-    }
-
-    if (isLoading) {
-        isLoading = false;
-        const input = document.getElementById("userInput");
-        const sendBtn = document.getElementById("sendBtn");
-        input.disabled = false;
-        sendBtn.disabled = false;
-    }
-
-    chat.messages.splice(index);
-    saveState();
-    renderMessages();
-}
-
-function regenerateResponse(index) {
-    const chat = getCurrentChat();
-    if (!chat || index === 0) return;
-
-    const userMsgIndex = index - 1;
-    if (userMsgIndex < 0 || chat.messages[userMsgIndex].role !== "user") return;
-
-    if (currentAbortController) {
-        currentAbortController.abort();
-        currentAbortController = null;
-    }
-
-    if (isLoading) {
-        isLoading = false;
-        const input = document.getElementById("userInput");
-        const sendBtn = document.getElementById("sendBtn");
-        input.disabled = false;
-        sendBtn.disabled = false;
-    }
-
-    const userMessage = chat.messages[userMsgIndex].content;
-
-    const history = chat.messages.slice(0, userMsgIndex).filter(m => !m.loading && (m.role === "user" || m.role === "ai"));
-
-    chat.messages.splice(userMsgIndex + 1);
-
-    const loadingMsg = { role: "ai", content: "", loading: true };
-    chat.messages.push(loadingMsg);
-    saveState();
-    renderMessages();
-
-    const input = document.getElementById("userInput");
-    const sendBtn = document.getElementById("sendBtn");
-    input.disabled = true;
-    sendBtn.disabled = true;
-    isLoading = true;
-
-    currentAbortController = new AbortController();
-    let regenThinkingStart = Date.now();
-    let regenTimer = setInterval(() => {
-        const seconds = Math.floor((Date.now() - regenThinkingStart) / 1000);
-        const timerEl = document.getElementById("thinkingTimer");
-        if (timerEl) timerEl.textContent = `Думаю: ${seconds}с`;
-    }, 1000);
-
-    callAPI(userMessage, history, currentAbortController.signal).then(response => {
-        clearInterval(regenTimer);
-        loadingMsg.content = response;
-        loadingMsg.loading = false;
-        loadingMsg.responseTime = Date.now() - regenThinkingStart;
-        loadingMsg.responseTimestamp = Date.now();
-        currentAbortController = null;
-        isLoading = false;
-        input.disabled = false;
-        sendBtn.disabled = false;
-        saveState();
-        renderMessages();
-    }).catch(error => {
-        if (error.name === "AbortError") return;
-        clearInterval(regenTimer);
-        showError(error.message);
-        chat.messages = chat.messages.filter(m => !m.loading);
-        currentAbortController = null;
-        isLoading = false;
-        input.disabled = false;
-        sendBtn.disabled = false;
-        saveState();
-        renderMessages();
-    });
-}
-
-function updateChatTitle() {
-    const chat = getCurrentChat();
-    document.getElementById("chatTitle").textContent = chat ? chat.title : "New Chat";
-}
-
-function updateModelBadge() {
-    const model = MODELS.find(m => m.id === state.settings.model);
-    document.getElementById("modelBadge").textContent = model ? model.name : "";
+function showError(message) {
+    const toast = document.getElementById("errorToast");
+    toast.textContent = message;
+    toast.classList.add("show");
+    setTimeout(() => toast.classList.remove("show"), 5000);
 }
 
 init();
