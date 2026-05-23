@@ -100,4 +100,4 @@ router.delete('/chats/:id/messages/:idx', async (req, res) => {
   res.json(chat);
 });
 
-module.exports = router;
+module.exports = router
