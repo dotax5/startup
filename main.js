@@ -1,4 +1,4 @@
-const API_KEY = "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";
+const API_KEY = "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";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const MODELS = [
