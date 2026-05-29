@@ -2,10 +2,10 @@ const API_KEY = "sk-or-v1-599b17391e32c37af3ace86979ded9c9c4ece65165046981818ef9
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const MODELS = [
-    { id: "openai/gpt-oss-120b:free", name: "gpt-oss-120b" },
-    { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super" },
-    { id: "z-ai/glm-4.5-air:free", name: "GLM 4.5 (Air)" },
-    { id: "poolside/laguna-m.1:free", name: "Laguna M.1 (долгая)"}
+    {id: "openai/gpt-oss-120b:free", name: "gpt-oss-120b"},
+    {id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super"},
+    {id: "z-ai/glm-4.5-air:free", name: "GLM 4.5 (Air)"},
+    {id: "poolside/laguna-m.1:free", name: "Laguna M.1 (долгая)"}
 ];
 
 let state = {
@@ -30,23 +30,18 @@ function init() {
 }
 
 
-
-
 async function api(path, options = {}) {
     const res = await fetch(path, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         ...options
     });
     if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
+        const err = await res.json().catch(() => ({error: res.statusText}));
         throw new Error(err.error || `HTTP ${res.status}`);
     }
     if (res.status === 204) return null;
     return res.json();
 }
-
-
-
 
 
 async function loadChats() {
@@ -79,7 +74,7 @@ async function switchToChat(chatId) {
 async function createNewChat() {
     if (isLoading) return;
     try {
-        const chat = await api('/api/chats', { method: 'POST' });
+        const chat = await api('/api/chats', {method: 'POST'});
         state.chats.unshift(chat);
         state.currentChat = chat;
         renderChatList();
@@ -95,7 +90,7 @@ async function deleteCurrentChat() {
     if (isLoading) return;
     if (!confirm("Delete this chat?")) return;
     try {
-        await api(`/api/chats/${state.currentChat._id}`, { method: 'DELETE' });
+        await api(`/api/chats/${state.currentChat._id}`, {method: 'DELETE'});
         state.chats = state.chats.filter(c => c._id !== state.currentChat._id);
         state.currentChat = null;
         if (state.chats.length === 0) {
@@ -112,7 +107,7 @@ async function updateChatTitleOnServer(title) {
     if (!state.currentChat) return;
     const updated = await api(`/api/chats/${state.currentChat._id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ title })
+        body: JSON.stringify({title})
     });
     state.currentChat.title = title;
     const meta = state.chats.find(c => c._id === state.currentChat._id);
@@ -125,7 +120,7 @@ async function addMessage(role, content, extra = {}) {
     if (!state.currentChat) return;
     state.currentChat = await api(`/api/chats/${state.currentChat._id}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ role, content, timestamp: Date.now(), ...extra })
+        body: JSON.stringify({role, content, timestamp: Date.now(), ...extra})
     });
 }
 
@@ -135,8 +130,6 @@ async function deleteMessagesFrom(idx) {
         method: 'DELETE'
     });
 }
-
-
 
 
 function applyTheme() {
@@ -200,8 +193,6 @@ function updateModelBadge() {
 }
 
 
-
-
 async function sendMessage() {
     const input = document.getElementById("userInput");
     const sendBtn = document.getElementById("sendBtn");
@@ -209,7 +200,10 @@ async function sendMessage() {
 
     if (isLoading) return;
     if (!message) return;
-    if (!state.settings.model) { alert("Please select a model"); return; }
+    if (!state.settings.model) {
+        alert("Please select a model");
+        return;
+    }
     if (!state.currentChat) return;
 
     isLoading = true;
@@ -221,14 +215,20 @@ async function sendMessage() {
 
     if (isFirst) {
         const title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
-        try { await updateChatTitleOnServer(title); } catch (e) { showError('Title update failed: ' + e.message); }
+        try {
+            await updateChatTitleOnServer(title);
+        } catch (e) {
+            showError('Title update failed: ' + e.message);
+        }
     }
 
     try {
         await addMessage('user', message);
     } catch (err) {
         showError('Failed to save message: ' + err.message);
-        isLoading = false; input.disabled = false; sendBtn.disabled = false;
+        isLoading = false;
+        input.disabled = false;
+        sendBtn.disabled = false;
         return;
     }
 
@@ -236,7 +236,7 @@ async function sendMessage() {
     autoResize();
     renderMessages();
 
-    const loadingMsg = { role: "ai", content: "", loading: true };
+    const loadingMsg = {role: "ai", content: "", loading: true};
     state.currentChat.messages.push(loadingMsg);
     renderMessages();
 
@@ -255,7 +255,10 @@ async function sendMessage() {
         const response = await callAPI(message, history.slice(0, -1), currentAbortController.signal);
         currentAbortController = null;
 
-        if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
+        if (thinkingTimer) {
+            clearInterval(thinkingTimer);
+            thinkingTimer = null;
+        }
 
         await addMessage('ai', response, {
             responseTime: Date.now() - thinkingStartTime,
@@ -263,16 +266,27 @@ async function sendMessage() {
         });
     } catch (error) {
         if (error.name === "AbortError") {
-            if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
-            try { await deleteMessagesFrom(state.currentChat.messages.length - 2); } catch { }
-            isLoading = false; input.disabled = false; sendBtn.disabled = false;
+            if (thinkingTimer) {
+                clearInterval(thinkingTimer);
+                thinkingTimer = null;
+            }
+            try {
+                await deleteMessagesFrom(state.currentChat.messages.length - 2);
+            } catch {
+            }
+            isLoading = false;
+            input.disabled = false;
+            sendBtn.disabled = false;
             renderMessages();
             return;
         }
         showError(error.message);
     }
 
-    if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
+    if (thinkingTimer) {
+        clearInterval(thinkingTimer);
+        thinkingTimer = null;
+    }
 
     state.currentChat.messages = state.currentChat.messages.filter(m => !m.loading);
     renderMessages();
@@ -284,7 +298,10 @@ async function sendMessage() {
 
 async function deleteMessage(index) {
     if (!state.currentChat) return;
-    if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; }
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+    }
     if (isLoading) {
         isLoading = false;
         document.getElementById("userInput").disabled = false;
@@ -305,7 +322,10 @@ async function regenerateResponse(index) {
     const userMsgIndex = index - 1;
     if (userMsgIndex < 0 || chat.messages[userMsgIndex].role !== "user") return;
 
-    if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; }
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+    }
     if (isLoading) {
         isLoading = false;
         document.getElementById("userInput").disabled = false;
@@ -321,7 +341,7 @@ async function regenerateResponse(index) {
         return;
     }
 
-    const loadingMsg = { role: "ai", content: "", loading: true };
+    const loadingMsg = {role: "ai", content: "", loading: true};
     state.currentChat.messages.push(loadingMsg);
     renderMessages();
 
@@ -372,12 +392,12 @@ async function regenerateResponse(index) {
 
 async function callAPI(userMessage, history, signal = null) {
     const messages = [
-        { role: "system", content: "You are a helpful assistant." },
+        {role: "system", content: "You are a helpful assistant."},
         ...history.map(m => ({
             role: m.role === "ai" ? "assistant" : "user",
             content: m.content
         })),
-        { role: "user", content: userMessage }
+        {role: "user", content: userMessage}
     ];
 
     const response = await fetch(OPENROUTER_API_URL, {
@@ -509,7 +529,7 @@ function renderMessages() {
 
 function formatTime(timestamp) {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
 }
 
 function formatMessage(content) {
