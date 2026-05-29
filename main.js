@@ -29,7 +29,8 @@ function init() {
     loadChats();
 }
 
-// --- SERVER API HELPERS ---
+
+
 
 async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -44,7 +45,9 @@ async function api(path, options = {}) {
     return res.json();
 }
 
-// --- CHAT CRUD ---
+
+
+
 
 async function loadChats() {
     try {
@@ -133,7 +136,8 @@ async function deleteMessagesFrom(idx) {
     });
 }
 
-// --- UI ---
+
+
 
 function applyTheme() {
     document.documentElement.setAttribute("data-theme", state.settings.theme);
@@ -195,7 +199,8 @@ function updateModelBadge() {
     document.getElementById("modelBadge").textContent = model ? model.name : "";
 }
 
-// --- MESSAGES ---
+
+
 
 async function sendMessage() {
     const input = document.getElementById("userInput");
@@ -407,7 +412,6 @@ async function callAPI(userMessage, history, signal = null) {
     return data.choices[0].message.content;
 }
 
-// --- RENDER ---
 
 function renderChatList() {
     const list = document.getElementById("chatList");
