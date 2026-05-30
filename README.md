@@ -1,6 +1,6 @@
 # AI Chat
 
-Одностраничное приложение для общения с AI-моделями через OpenRouter API. Клиент на Vanilla JS, сервер на Express + MongoDB.
+Одностраничное приложение для общения с AI-моделями через OpenRouter API. Клиент на JS, сервер на Express + MongoDB.
 
 ## Возможности
 
